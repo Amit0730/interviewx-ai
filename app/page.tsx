@@ -1,69 +1,219 @@
-import Image from "next/image";
+'use client';
 
-export default function Home() {
+import React, { useState, useEffect } from 'react';
+import { Navbar } from '@/components/Navbar';
+import { LandingHero } from '@/components/LandingHero';
+import { HowItWorks } from '@/components/HowItWorks';
+import { CategoryGrid } from '@/components/CategoryGrid';
+import { FeaturesSection } from '@/components/FeaturesSection';
+import { ComparisonSection } from '@/components/ComparisonSection';
+import { Footer } from '@/components/Footer';
+import { InterviewSetupModal } from '@/components/InterviewSetupModal';
+import { InterviewSimulator } from '@/components/InterviewSimulator';
+import { FinalResults } from '@/components/FinalResults';
+import { HistoryModal } from '@/components/HistoryModal';
+import {
+  InterviewCategory,
+  InterviewDifficulty,
+  InterviewRole,
+  InterviewSession,
+  AIStatusResponse,
+  Question
+} from '@/lib/types';
+
+export default function HomePage() {
+  const [viewMode, setViewMode] = useState<'landing' | 'interview' | 'results'>('landing');
+  const [isSetupOpen, setIsSetupOpen] = useState(false);
+  const [isHistoryOpen, setIsHistoryOpen] = useState(false);
+  const [setupInitialCategory, setSetupInitialCategory] = useState<InterviewCategory>('DSA');
+  const [activeSession, setActiveSession] = useState<InterviewSession | null>(null);
+  const [customApiKey, setCustomApiKey] = useState<string | undefined>(undefined);
+  const [aiStatus, setAiStatus] = useState<AIStatusResponse | null>(null);
+  const [loadingQuestions, setLoadingQuestions] = useState(false);
+
+  // Fetch AI server status on initial load
+  useEffect(() => {
+    async function checkStatus() {
+      try {
+        const res = await fetch('/api/status');
+        const data: AIStatusResponse = await res.json();
+        setAiStatus(data);
+      } catch (err) {
+        console.warn('Could not fetch AI status, fallback to local', err);
+        setAiStatus({
+          configured: false,
+          provider: 'local',
+          modelName: 'Built-in Semantic Engine',
+          label: 'Demo / Local Mode Active',
+        });
+      }
+    }
+    checkStatus();
+  }, []);
+
+  // Launch interview setup with specific category
+  const handleOpenCategorySetup = (cat: InterviewCategory) => {
+    setSetupInitialCategory(cat);
+    setIsSetupOpen(true);
+  };
+
+  // Start Interview session from configuration
+  const handleStartSession = async (config: {
+    role: InterviewRole;
+    difficulty: InterviewDifficulty;
+    category: InterviewCategory;
+    questionCount: number;
+    customApiKey?: string;
+  }) => {
+    setIsSetupOpen(false);
+    setLoadingQuestions(true);
+    setCustomApiKey(config.customApiKey);
+
+    try {
+      const response = await fetch('/api/generate-questions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          role: config.role,
+          difficulty: config.difficulty,
+          category: config.category,
+          count: config.questionCount,
+        }),
+      });
+
+      const data = await response.json();
+      const questions: Question[] = data.questions || [];
+
+      const newSession: InterviewSession = {
+        id: `session_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
+        role: config.role,
+        difficulty: config.difficulty,
+        category: config.category,
+        questionCount: questions.length,
+        createdAt: new Date().toISOString(),
+        durationSeconds: 0,
+        questions,
+        answers: {},
+        evaluations: {},
+        overallScore: 0,
+        metrics: {
+          technicalKnowledge: 0,
+          problemSolving: 0,
+          communication: 0,
+          overall: 0,
+        },
+        strongestCategory: config.category,
+        areasForImprovement: [],
+        isCompleted: false,
+        mode: data.mode || (config.customApiKey ? 'cloud-ai' : 'local-ai'),
+      };
+
+      setActiveSession(newSession);
+      setViewMode('interview');
+    } catch (err) {
+      console.error('Failed to generate session questions:', err);
+    } finally {
+      setLoadingQuestions(false);
+    }
+  };
+
+  // Complete interview session
+  const handleSessionComplete = (completedSession: InterviewSession) => {
+    setActiveSession(completedSession);
+    setViewMode('results');
+  };
+
+  // Open past session from history
+  const handleSelectHistorySession = (session: InterviewSession) => {
+    setIsHistoryOpen(false);
+    setActiveSession(session);
+    setViewMode('results');
+  };
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert h-5 w-[100px]"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
+    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans">
+      {/* 1. Interview In-Progress Chamber */}
+      {viewMode === 'interview' && activeSession && (
+        <InterviewSimulator
+          session={activeSession}
+          customApiKey={customApiKey}
+          onComplete={handleSessionComplete}
+          onExit={() => setViewMode('landing')}
         />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the{" "}
-            <code className="rounded bg-black/[.06] px-1.5 py-0.5 font-mono text-[0.9em] dark:bg-white/[.08]">
-              page.tsx
-            </code>{" "}
-            file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert h-[14px] w-4"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={14}
+      )}
+
+      {/* 2. Final Results View */}
+      {viewMode === 'results' && activeSession && (
+        <FinalResults
+          session={activeSession}
+          onRetake={() => {
+            setSetupInitialCategory(activeSession.category);
+            setIsSetupOpen(true);
+          }}
+          onViewHistory={() => setIsHistoryOpen(true)}
+          onHome={() => setViewMode('landing')}
+        />
+      )}
+
+      {/* 3. Landing Page View */}
+      {viewMode === 'landing' && (
+        <>
+          <Navbar
+            onOpenSetup={() => setIsSetupOpen(true)}
+            onOpenHistory={() => setIsHistoryOpen(true)}
+            aiStatus={aiStatus}
+          />
+
+          <main className="flex-1">
+            <LandingHero
+              onStartInterview={() => setIsSetupOpen(true)}
+              onSelectCategory={(cat) => handleOpenCategorySetup(cat as InterviewCategory)}
             />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
+
+            <HowItWorks />
+
+            <CategoryGrid
+              onSelectCategory={(cat) => handleOpenCategorySetup(cat)}
+            />
+
+            <FeaturesSection />
+
+            <ComparisonSection
+              onStartInterview={() => setIsSetupOpen(true)}
+            />
+          </main>
+
+          <Footer />
+        </>
+      )}
+
+      {/* Setup Modal */}
+      <InterviewSetupModal
+        key={setupInitialCategory}
+        isOpen={isSetupOpen}
+        onClose={() => setIsSetupOpen(false)}
+        onStart={handleStartSession}
+        initialCategory={setupInitialCategory}
+        aiStatus={aiStatus}
+      />
+
+      {/* History Modal */}
+      <HistoryModal
+        isOpen={isHistoryOpen}
+        onClose={() => setIsHistoryOpen(false)}
+        onSelectSession={handleSelectHistorySession}
+      />
+
+      {/* Loading Overlay */}
+      {loadingQuestions && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-md">
+          <div className="p-8 rounded-3xl bg-slate-900 border border-slate-800 text-center shadow-2xl space-y-4">
+            <div className="w-12 h-12 border-3 border-indigo-500/20 border-t-cyan-400 rounded-full animate-spin mx-auto" />
+            <h3 className="text-lg font-bold text-white">Synthesizing Interview Track...</h3>
+            <p className="text-xs text-slate-400">Calibrating questions and evaluation rubrics</p>
+          </div>
         </div>
-      </main>
+      )}
     </div>
   );
 }
